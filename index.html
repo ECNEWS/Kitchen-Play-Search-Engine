@@ -268,3 +268,247 @@
   </script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>सखी सर्च: महिलाओं के लिए रेसिपी सर्च</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js"></script>
+  <style>
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #ff69b4;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .recipe-card {
+      @apply bg-white rounded-lg shadow-md p-4 mb-4 hover:shadow-lg transition;
+    }
+  </style>
+</head>
+<body class="bg-pink-50">
+  <div class="container mx-auto p-4">
+    <h1 class="text-2xl font-bold text-center mb-4 text-pink-600">सखी सर्च: महिलाओं के लिए रेसिपी</h1>
+    <div id="authSection" class="text-center mb-4">
+      <button id="signInButton" onclick="signIn()" class="bg-pink-500 text-white p-2 rounded">लॉगिन करें</button>
+      <button id="signOutButton" onclick="signOut()" class="hidden bg-gray-500 text-white p-2 rounded">लॉगआउट</button>
+      <p id="userMessage" class="text-gray-600"></p>
+    </div>
+    <div id="searchSection" class="hidden flex justify-center mb-4">
+      <input type="text" id="searchInput" class="border p-2 rounded-l w-64" placeholder="रेसिपी या सामग्री डालें">
+      <button onclick="searchRecipes(document.getElementById('searchInput').value)" class="bg-pink-500 text-white p-2 rounded-r">खोजें</button>
+    </div>
+    <div id="filterSection" class="hidden flex justify-center mb-4">
+      <select id="filterSelect" onchange="searchRecipes(document.getElementById('searchInput').value)" class="border p-2 rounded">
+        <option value="all">सभी रेसिपी</option>
+        <option value="15min">15 मिनट से कम</option>
+        <option value="30min">30 मिनट से कम</option>
+        <option value="60min">1 घंटे से कम</option>
+      </select>
+      <button id="deepSearchButton" onclick="deepSearch()" class="bg-purple-500 text-white p-2 ml-2 rounded hidden">डीप सर्च</button>
+    </div>
+    <div id="recipeResults" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </div>
+  <footer class="text-center py-4">
+    <p>© 2025 सखी सर्च. सर्वाधिकार सुरक्षित।</p>
+  </footer>
+
+  <script>
+    // Firebase कॉन्फ़िगरेशन (अपनी Firebase प्रोजेक्ट सेटिंग्स से बदलें)
+    const firebaseConfig = {
+      apiKey: "YOUR_FIREBASE_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    // DOM एलिमेंट्स
+    const recipeResults = document.getElementById('recipeResults');
+    const searchSection = document.getElementById('searchSection');
+    const filterSection = document.getElementById('filterSection');
+    const userMessage = document.getElementById('userMessage');
+    const signInButton = document.getElementById('signInButton');
+    const signOutButton = document.getElementById('signOutButton');
+    const deepSearchButton = document.getElementById('deepSearchButton');
+
+    // ऑथेंटिकेशन स्टेटस चेक
+    firebase.auth().onAuthStateChanged(user => {
+      if (user) {
+        user.getIdTokenResult().then(idTokenResult => {
+          const isFemale = idTokenResult.claims.gender === 'female';
+          const isPremium = idTokenResult.claims.premium || false;
+          if (isFemale) {
+            userMessage.textContent = `नमस्ते, ${user.displayName}! सखी सर्च में आपका स्वागत है।`;
+            searchSection.classList.remove('hidden');
+            filterSection.classList.remove('hidden');
+            signInButton.classList.add('hidden');
+            signOutButton.classList.remove('hidden');
+            if (isPremium) {
+              deepSearchButton.classList.remove('hidden');
+              userMessage.textContent += ' (प्रीमियम यूज़र)';
+            }
+          } else {
+            userMessage.textContent = 'क्षमा करें, यह सर्च इंजन केवल महिलाओं के लिए है।';
+            firebase.auth().signOut();
+          }
+        });
+      } else {
+        userMessage.textContent = 'कृपया लॉगिन करें। यह सर्च इंजन केवल महिलाओं के लिए है।';
+        searchSection.classList.add('hidden');
+        filterSection.classList.add('hidden');
+        signInButton.classList.remove('hidden');
+        signOutButton.classList.add('hidden');
+        deepSearchButton.classList.add('hidden');
+        recipeResults.innerHTML = '';
+      }
+    });
+
+    // लॉगिन फंक्शन
+    function signIn() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      firebase.auth().signInWithPopup(provider).catch(error => {
+        userMessage.textContent = 'लॉगिन में त्रुटि: ' + error.message;
+      });
+    }
+
+    // लॉगआउट फंक्शन
+    function signOut() {
+      firebase.auth().signOut();
+    }
+
+    // रेसिपी सर्च फंक्शन
+    async function searchRecipes(query) {
+      if (!query) {
+        alert('कृपया रेसिपी या सामग्री का नाम टाइप करें।');
+        console.warn('खाली क्वेरी प्रदान की गई');
+        return;
+      }
+
+      recipeResults.innerHTML = '<div class="loader">लोड हो रहा है...</div>';
+
+      try {
+        let optimizedQuery = query;
+        if (query.includes('कैसे बनाते हैं') || query.includes('रेसिपी')) {
+          optimizedQuery = query.replace('कैसे बनाते हैं', '').replace('रेसिपी', '').trim() + ' रेसिपी हिंदी में';
+        } else {
+          optimizedQuery = query + ' रेसिपी हिंदी में';
+        }
+
+        console.log('सर्च हो रहा है:', optimizedQuery);
+
+        const response = await fetch('/api/recipe-search', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + await firebase.auth().currentUser.getIdToken()
+          },
+          body: JSON.stringify({
+            query: optimizedQuery,
+            maxResults: 12,
+            filter: document.getElementById('filterSelect').value,
+            userId: firebase.auth().currentUser?.uid
+          })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'अज्ञात त्रुटि');
+        }
+
+        if (!data.recipes || data.recipes.length === 0) {
+          recipeResults.innerHTML = '<p class="text-center text-gray-600">कोई परिणाम नहीं मिला। कृपया दूसरी क्वेरी आज़माएँ।</p>';
+          console.log('कोई रिजल्ट्स नहीं मिले:', optimizedQuery);
+          return;
+        }
+
+        recipeResults.innerHTML = '';
+        data.recipes.forEach(recipe => {
+          const recipeCard = document.createElement('div');
+          recipeCard.className = 'recipe-card';
+          recipeCard.innerHTML = `
+            <a href="${recipe.url}" target="_blank">
+              <img src="${recipe.thumbnail || 'https://via.placeholder.com/300x200'}" alt="${recipe.title}" class="w-full h-auto rounded">
+              <h3 class="text-lg font-semibold mt-2 text-pink-600">${recipe.title}</h3>
+              <p class="text-gray-600">सामग्री: ${recipe.ingredients.join(', ')}</p>
+              <p class="text-gray-600">तैयारी समय: ${recipe.prepTime || 'अज्ञात'}</p>
+            </a>
+          `;
+          recipeResults.appendChild(recipeCard);
+        });
+      } catch (error) {
+        recipeResults.innerHTML = '<p class="text-center text-red-500">कुछ गलत हुआ। कृपया बाद में फिर से प्रयास करें।</p>';
+        console.error('सर्च विफल:', error.message);
+      }
+    }
+
+    // डीप सर्च फंक्शन (प्रीमियम यूज़र्स)
+    async function deepSearch() {
+      const query = document.getElementById('searchInput').value;
+      if (!query) {
+        alert('कृपया रेसिपी या सामग्री का नाम टाइप करें।');
+        return;
+      }
+
+      recipeResults.innerHTML = '<div class="loader">डीप सर्च चल रहा है...</div>';
+
+      try {
+        const response = await fetch('/api/deep-search', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + await firebase.auth().currentUser.getIdToken()
+          },
+          body: JSON.stringify({
+            query: query + ' रेसिपी हिंदी में',
+            maxResults: 20,
+            filter: document.getElementById('filterSelect').value,
+            userId: firebase.auth().currentUser?.uid
+          })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'अज्ञात त्रुटि');
+        }
+
+        if (!data.recipes || data.recipes.length === 0) {
+          recipeResults.innerHTML = '<p class="text-center text-gray-600">डीप सर्च में कोई परिणाम नहीं मिला।</p>';
+          return;
+        }
+
+        recipeResults.innerHTML = '<p class="text-center text-purple-600">डीप सर्च रिजल्ट्स:</p>';
+        data.recipes.forEach(recipe => {
+          const recipeCard = document.createElement('div');
+          recipeCard.className = 'recipe-card';
+          recipeCard.innerHTML = `
+            <a href="${recipe.url}" target="_blank">
+              <img src="${recipe.thumbnail || 'https://via.placeholder.com/300x200'}" alt="${recipe.title}" class="w-full h-auto rounded">
+              <h3 class="text-lg font-semibold mt-2 text-purple-600">${recipe.title}</h3>
+              <p class="text-gray-600">सामग्री: ${recipe.ingredients.join(', ')}</p>
+              <p class="text-gray-600">तैयारी समय: ${recipe.prepTime || 'अज्ञात'}</p>
+            </a>
+          `;
+          recipeResults.appendChild(recipeCard);
+        });
+      } catch (error) {
+        recipeResults.innerHTML = '<p class="text-center text-red-500">डीप सर्च में त्रुटि। कृपया बाद में प्रयास करें।</p>';
+        console.error('डीप सर्च विफल:', error.message);
+      }
+    }
+  </script>
+</body>
+</html>
